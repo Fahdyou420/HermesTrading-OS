@@ -86,7 +86,9 @@ async def check_active_positions():
         try:
             # Query mt5_bridge for latest price bar
             url = f"{MT5_BRIDGE_URL}/latest_bars?instrument={instrument}&tf=M15&n=1"
-            resp = requests.get(url, timeout=5)
+            resp = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: requests.get(url, timeout=5)
+            )
             if resp.status_code != 200:
                 continue
                 

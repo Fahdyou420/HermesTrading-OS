@@ -121,8 +121,6 @@ def create_vault():
     
     user_file_path = vault_base / "06_AGENT_MEMORY/USER.md"
     with open(user_file_path, "w", encoding="utf-8") as f:
-        f.write(user_file_path.name + "\n" + user_content.lstrip())
-    with open(user_file_path, "w", encoding="utf-8") as f:
          f.write(user_content.lstrip())
     print("  [+] Created file: 06_AGENT_MEMORY/USER.md")
 

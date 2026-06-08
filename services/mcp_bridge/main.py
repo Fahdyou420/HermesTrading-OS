@@ -5,6 +5,7 @@ import asyncio
 import httpx
 import redis
 import requests
+import zmq
 from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -43,6 +44,19 @@ redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 # Document chunk sampler counter
 chunk_counter = 0
 
+# Initialize ZeroMQ Draw socket to relay chart commands directly to MetaTrader 5
+try:
+    zmq_ctx = zmq.Context()
+    zmq_draw_socket = zmq_ctx.socket(zmq.PUSH)
+    zmq_draw_socket.setsockopt(zmq.LINGER, 1000)
+    zmq_draw_socket.setsockopt(zmq.SNDTIMEO, 2000)
+    zmq_draw_uri = os.getenv("DRAW_ZMQ_URI", "tcp://host.docker.internal:5556")
+    logger.info(f"Connecting MCP Bridge ZMQ Draw socket to {zmq_draw_uri}...")
+    zmq_draw_socket.connect(zmq_draw_uri)
+except Exception as ze:
+    logger.error(f"Failed to initialize ZMQ Draw socket in MCP Bridge: {ze}")
+    zmq_draw_socket = None
+
 class ChatRequest(BaseModel):
     message: str
     task_type: Optional[str] = "analysis"
@@ -59,7 +73,7 @@ async def signal_proxy_endpoint(data: Dict[str, Any]):
     Proxies a trade signal trigger directly into the Risk Execution Engine container.
     """
     logger.info(f"Incoming /signal proxy trigger for instrument {data.get('instrument')}")
-    target_url = "http://execution:5562/signal"
+    target_url = "http://execution:5563/signal"
     try:
         resp = requests.post(target_url, json=data, timeout=10)
         return resp.json()
@@ -114,14 +128,19 @@ async def redis_subscription_handler():
     Subscribes to:
     - BACKTEST_COMPLETE -> triggers automated chat response on host RPC.
     - NEW_DOCUMENT_CHUNK -> prints a preview log on every 100th event.
+    - CHART_DRAW_CMD -> forwards draw packets to MT5 over ZMQ.
     """
     global chunk_counter
     logger.info("Initializing PubSub listener for MCP Bridge...")
     
     pubsub = redis_client.pubsub()
     try:
-        pubsub.subscribe(redis_channels.BACKTEST_COMPLETE, redis_channels.NEW_DOCUMENT_CHUNK)
-        logger.info(f"✓ Subscribed to channels: {redis_channels.BACKTEST_COMPLETE}, {redis_channels.NEW_DOCUMENT_CHUNK}")
+        pubsub.subscribe(
+            redis_channels.BACKTEST_COMPLETE, 
+            redis_channels.NEW_DOCUMENT_CHUNK,
+            redis_channels.CHART_DRAW_CMD
+        )
+        logger.info(f"✓ Subscribed to channels: {redis_channels.BACKTEST_COMPLETE}, {redis_channels.NEW_DOCUMENT_CHUNK}, {redis_channels.CHART_DRAW_CMD}")
     except Exception as err:
         logger.critical(f"Redis PubSub connection failed inside MCP Bridge: {err}")
         return
@@ -154,6 +173,14 @@ async def redis_subscription_handler():
                     chunk_counter += 1
                     if chunk_counter % 100 == 0:
                         logger.info(f"[Sample #{chunk_counter}] Intercepted raw NEW_DOCUMENT_CHUNK message. Size: {len(str(data_raw))} bytes.")
+
+                elif channel == redis_channels.CHART_DRAW_CMD:
+                    logger.info(f"[*] Intercepted CHART_DRAW_CMD to forward to MT5 DRAW channel.")
+                    if zmq_draw_socket:
+                        try:
+                            zmq_draw_socket.send_string(data_raw)
+                        except Exception as se:
+                            logger.error(f"Failed to forward draw packet over ZeroMQ: {se}")
                         
             await asyncio.sleep(0.05)
         except Exception as ex:

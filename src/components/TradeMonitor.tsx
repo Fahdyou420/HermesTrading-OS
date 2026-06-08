@@ -198,6 +198,26 @@ export default function TradeMonitor({
                   />
                 ))}
 
+                {/* Real-time Session High and Low Reference Markers */}
+                {metrics.dailyHigh && (
+                  <ReferenceLine
+                    y={metrics.dailyHigh}
+                    stroke="#ef4444"
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                    label={{ value: `Session High: $${metrics.dailyHigh.toFixed(2)}`, fill: '#f87171', fontSize: 8, fontFamily: 'JetBrains Mono', position: 'insideTopRight' }}
+                  />
+                )}
+                {metrics.dailyLow && (
+                  <ReferenceLine
+                    y={metrics.dailyLow}
+                    stroke="#3b82f6"
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                    label={{ value: `Session Low: $${metrics.dailyLow.toFixed(2)}`, fill: '#60a5fa', fontSize: 8, fontFamily: 'JetBrains Mono', position: 'insideBottomRight' }}
+                  />
+                )}
+
                 <Line
                   type="monotone"
                   dataKey="price"

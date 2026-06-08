@@ -1,6 +1,7 @@
 import os
 import sys
 from flask import Flask, Response, redirect, jsonify, render_template
+from flask_cors import CORS
 
 # Add current folder to path to make sure blueprints load seamlessly as modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

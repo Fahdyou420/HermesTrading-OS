@@ -140,25 +140,73 @@ async def get_backtest_files():
     return files
 
 
-# Background Task: ZeroMQ Subscriber
+# Live MT5 Environment State Cache
+account_state_store = {
+    "balance": 10000.0,
+    "equity": 10000.0,
+    "daily_dd_pct": 0.0,
+    "weekly_dd_pct": 0.0
+}
+positions_store = []
+calendar_events_store = [
+    {
+        "id": "cal_cpi",
+        "title": "US CPI Consumer Price Index",
+        "impact": "high",
+        "timestamp": 1780000000,
+        "currency": "USD"
+    }
+]
+
+@app.get("/account_state")
+async def get_account_state():
+    return account_state_store
+
+@app.post("/account_state")
+async def update_account_state(data: Dict[str, Any]):
+    global account_state_store
+    account_state_store.update(data)
+    return {"status": "ok", "account_state": account_state_store}
+
+@app.get("/positions")
+async def get_positions():
+    return positions_store
+
+@app.post("/positions")
+async def update_positions(data: List[Dict[str, Any]]):
+    global positions_store
+    positions_store = data
+    return {"status": "ok", "positions": positions_store}
+
+@app.get("/calendar")
+async def get_calendar():
+    return calendar_events_store
+
+@app.post("/calendar")
+async def update_calendar(data: List[Dict[str, Any]]):
+    global calendar_events_store
+    calendar_events_store = data
+    return {"status": "ok", "calendar": calendar_events_store}
+
+
+# Background Task: ZeroMQ PULL Receiver
 async def zmq_listener_task():
     global redis_client
     
-    zmq_url = f"tcp://{ZMQ_HOST}:{ZMQ_PORT}"
-    logger.info(f"Setting up ZeroMQ SUB Socket to {zmq_url}...")
+    bind_url = f"tcp://0.0.0.0:{ZMQ_PORT}"
+    logger.info(f"Setting up ZeroMQ PULL Socket, binding to {bind_url}...")
     
     ctx = zmq.asyncio.Context()
-    sock = ctx.socket(zmq.SUB)
+    sock = ctx.socket(zmq.PULL)
     
     # Set Socket options
-    sock.setsockopt_string(zmq.SUBSCRIBE, "") # Subscribe to all topics
     sock.setsockopt(zmq.RCVHWM, 100000) # High watermark for backtest data
     
     try:
-        sock.connect(zmq_url)
-        logger.info(f"[✓] ZeroMQ SUB socket connected successfully to {zmq_url}")
+        sock.bind(bind_url)
+        logger.info(f"[✓] ZeroMQ PULL socket bound successfully to {bind_url}")
     except Exception as e:
-        logger.critical(f"[X] Failed to connect ZMQ SUB socket: {e}")
+        logger.critical(f"[X] Failed to bind ZMQ PULL socket on {bind_url}: {e}")
         return
 
     while True:
@@ -193,6 +241,16 @@ async def zmq_listener_task():
                 
             elif msg_type == "trade_event":
                 await handle_trade_event(payload)
+                
+            elif msg_type == "account":
+                global account_state_store
+                account_state_store.update(payload.get("data", {}))
+                logger.info(f"Received account state update from ZMQ: {account_state_store}")
+                
+            elif msg_type == "positions":
+                global positions_store
+                positions_store = payload.get("positions", [])
+                logger.info(f"Received positions update from ZMQ: {len(positions_store)} positions open.")
                 
             else:
                 logger.warning(f"Unknown message type received: {msg_type}")

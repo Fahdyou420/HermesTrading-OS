@@ -274,6 +274,6 @@ async def receive_signal_endpoint(data: Dict[str, Any]):
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("EXECUTION_PORT", "5562"))
+    port = int(os.getenv("EXECUTION_PORT", "5563"))
     logger.info(f"Starting Hermes Execution Service on 0.0.0.0:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")

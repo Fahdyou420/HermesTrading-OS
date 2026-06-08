@@ -175,7 +175,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: hermes_dashboard
-    command: python -m services.dashboard
+    command: python -m dashboard.app
     ports:
       - "8080:8080"
     volumes:

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -278,56 +279,349 @@ setInterval(() => {
   }
 }, 3000);
 
+// Helper to fetch with an abort controller timeout (bug-proof cross-platform)
+async function fetchWithTimeout(url: string, options: any = {}, timeoutMs: number = 200) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+}
+
+// Helper to recursively scan local markdown files in the real `/data/obsidian` mount
+function scanObsidianVault(dir: string, baseDir: string = ""): any[] {
+  let results: any[] = [];
+  try {
+    if (!fs.existsSync(dir)) return results;
+    const list = fs.readdirSync(dir);
+    list.forEach(file => {
+      const filePath = path.join(dir, file);
+      const relativePath = baseDir ? path.join(baseDir, file) : file;
+      const stat = fs.statSync(filePath);
+      if (stat && stat.isDirectory()) {
+        results = results.concat(scanObsidianVault(filePath, relativePath));
+      } else if (file.endsWith(".md")) {
+        const content = fs.readFileSync(filePath, "utf-8");
+        const title = file.replace(/\.md$/, "");
+        results.push({
+          path: relativePath,
+          title,
+          content,
+          folder: baseDir || "root",
+          tags: [],
+          mtime: stat.mtime.toISOString()
+        });
+      }
+    });
+  } catch (err) {
+    // Gracefully catch directory read errors
+  }
+  return results;
+}
+
 // API Endpoints
-app.get("/api/status", (req, res) => {
+app.get("/api/status", async (req, res) => {
+  let ollamaStatus = ai ? 'connected' : 'disconnected';
+  let hermesRpcStatus = 'disconnected';
+  let mt5DataStatus = 'disconnected';
+  let mt5DrawStatus = 'disconnected';
+  let mt5OrderStatus = 'disconnected';
+  let redisStatus = 'disconnected';
+  let chromadbStatus = 'disconnected';
+  let obsidianStatus = fs.existsSync("/data/obsidian") ? 'connected' : 'disconnected';
+
+  // 1. Check Ollama
+  try {
+    const r = await fetchWithTimeout("http://host.docker.internal:11434/api/tags", {}, 150);
+    if (r.ok) ollamaStatus = 'connected';
+  } catch (e) {}
+
+  // 2. Check Hermes RPC
+  try {
+    const r = await fetchWithTimeout("http://host.docker.internal:7778/", {}, 150);
+    if (r.ok) hermesRpcStatus = 'connected';
+  } catch (e) {}
+
+  // 3. Check MT5 gateway/bridge
+  try {
+    const r = await fetchWithTimeout("http://mt5_bridge:5558/health", {}, 150);
+    if (r.ok) {
+      mt5DataStatus = 'connected';
+      mt5DrawStatus = 'connected';
+      mt5OrderStatus = 'connected';
+    }
+  } catch (e) {}
+
+  // 3b. Try localhost if mt5_bridge hostname is unreachable
+  if (mt5DataStatus === 'disconnected') {
+    try {
+      const r = await fetchWithTimeout("http://localhost:5558/health", {}, 100);
+      if (r.ok) {
+        mt5DataStatus = 'connected';
+        mt5DrawStatus = 'connected';
+        mt5OrderStatus = 'connected';
+      }
+    } catch (e) {}
+  }
+
+  // 4. Check Redis via Preprocessor Health (which checks internal redis client connection)
+  try {
+    const r = await fetchWithTimeout("http://preprocessor:5559/health", {}, 150);
+    if (r.ok) redisStatus = 'connected';
+  } catch (e) {}
+
+  // 5. Check ChromaDB
+  try {
+    const r = await fetchWithTimeout("http://chromadb:8000/api/v1/heartbeat", {}, 150);
+    if (r.ok) chromadbStatus = 'connected';
+  } catch (e) {}
+
   res.json({
-    ollama: ai ? 'connected' : 'disconnected',
-    hermesRpc: 'connected',
+    ollama: ollamaStatus,
+    hermesRpc: hermesRpcStatus,
     mt5Zmq: {
-      data: 'connected',
-      draw: 'connected',
-      order: 'connected'
+      data: mt5DataStatus,
+      draw: mt5DrawStatus,
+      order: mt5OrderStatus
     },
-    redis: 'connected',
-    chromaDb: 'connected',
-    obsidian: 'connected'
+    redis: redisStatus,
+    chromaDb: chromadbStatus,
+    obsidian: obsidianStatus
   });
 });
 
-app.get("/api/market", (req, res) => {
+app.get("/api/market", async (req, res) => {
+  let price = currentPrice;
+  let high = 2329.80;
+  let low = 2301.20;
+  let fvgList = fairValueGaps;
+  let obList = orderBlocks;
+  let liqList = liquidityPools;
+
+  // 1. Try to fetch SMC indicators from preprocessor
+  try {
+    const preRes = await fetchWithTimeout("http://preprocessor:5559/smc_analysis?instrument=XAUUSD&tf=M15&n=300", {}, 200);
+    if (preRes.ok) {
+      const smcData = await preRes.json();
+      if (smcData.fvg && smcData.fvg.length > 0) fvgList = smcData.fvg;
+      if (smcData.order_blocks && smcData.order_blocks.length > 0) obList = smcData.order_blocks;
+      if (smcData.liquidity && smcData.liquidity.length > 0) liqList = smcData.liquidity;
+    }
+  } catch (e) {}
+
+  // 2. Try to fetch live price / range from mt5_bridge
+  try {
+    const mt5Res = await fetchWithTimeout("http://mt5_bridge:5558/latest_bars?instrument=XAUUSD&tf=M15&n=50", {}, 200);
+    if (mt5Res.ok) {
+      const bars = await mt5Res.json();
+      if (bars && bars.length > 0) {
+        const latestBar = bars[bars.length - 1];
+        price = latestBar.close;
+        high = Math.max(...bars.map((b: any) => b.high));
+        low = Math.min(...bars.map((b: any) => b.low));
+        currentPrice = price; // sync internal state
+      }
+    }
+  } catch (e) {}
+
+  // 3. Fallback to parsing live_feed.jsonl file on disk directly
+  if (price === currentPrice && fs.existsSync("/data/market_data/live_feed.jsonl")) {
+    try {
+      const data = fs.readFileSync("/data/market_data/live_feed.jsonl", "utf-8");
+      const lines = data.split("\n").filter(Boolean);
+      const bars = lines.map(l => JSON.parse(l)).filter(b => b.instrument?.toUpperCase() === "XAUUSD");
+      if (bars.length > 0) {
+        const latestBar = bars[bars.length - 1];
+        price = latestBar.close || latestBar.price;
+        high = Math.max(...bars.map((b: any) => b.high || price));
+        low = Math.min(...bars.map((b: any) => b.low || price));
+        currentPrice = price;
+      }
+    } catch (err) {}
+  }
+
   res.json({
-    currentPrice,
-    dailyHigh: 2329.80,
-    dailyLow: 2301.20,
+    currentPrice: price,
+    dailyHigh: high,
+    dailyLow: low,
     sessions: {
-      asian: { open: false, range: "2301.20 - 2311.50" },
-      london: { open: true, range: "2304.20 - 2322.10" },
-      newYork: { open: true, range: "2310.50 - 2329.80" }
+      asian: { open: false, range: `${(low + 2).toFixed(2)} - ${(low + 12).toFixed(2)}` },
+      london: { open: true, range: `${(low + 5).toFixed(2)} - ${(high - 5).toFixed(2)}` },
+      newYork: { open: true, range: `${(low + 10).toFixed(2)} - ${high.toFixed(2)}` }
     },
-    fairValueGaps,
-    orderBlocks,
-    liquidityPools
+    fairValueGaps: fvgList,
+    orderBlocks: obList,
+    liquidityPools: liqList
   });
 });
 
-app.get("/api/trades", (req, res) => {
+app.get("/api/trades", async (req, res) => {
+  let activeTradesList = trades;
+  let closedTradesList = closedTrades;
+  let currentBalance = balance;
+  let currentEquity = balance + trades.reduce((acc, t) => acc + t.pnl, 0);
+  let d_dd = 0.85;
+  let w_dd = 1.45;
+
+  try {
+    const paperTraderUrl = "http://paper_trader:5561";
+    // Check positions from paper_trader
+    const posRes = await fetchWithTimeout(`${paperTraderUrl}/positions`, {}, 250);
+    if (posRes.ok) {
+      const livePos = await posRes.json();
+      if (livePos && Array.isArray(livePos)) {
+        activeTradesList = livePos.map((tp: any) => ({
+          id: String(tp.ticket || tp.id),
+          timestamp: tp.timestamp ? new Date(tp.timestamp * 1000).toISOString() : new Date().toISOString(),
+          instrument: tp.instrument || "XAUUSD",
+          direction: String(tp.direction || "BUY").toUpperCase(),
+          type: tp.strategy_id || tp.setup_type || "SMC Trade Setup",
+          entryPrice: parseFloat(tp.entry_price || tp.entryPrice || 0),
+          stopLoss: parseFloat(tp.sl || tp.stopLoss || 0),
+          takeProfit: parseFloat(tp.tp || tp.takeProfit || 0),
+          lotSize: parseFloat(tp.lots || tp.lotSize || 1.0),
+          currentPrice: parseFloat(tp.current_price || currentPrice),
+          pnl: parseFloat(tp.profit || tp.pnl || 0.0),
+          status: "OPEN",
+          stage: tp.mode || tp.stage || "paper",
+          riskPercent: parseFloat(tp.risk_pct || tp.riskPercent || 0.5),
+          rrRatio: parseFloat(tp.r_ratio || tp.rrRatio || 2.0),
+          notes: tp.notes || tp.agent_notes || "Active paper tracking database position."
+        }));
+      }
+    }
+
+    // Check stats from paper_trader
+    const statsRes = await fetchWithTimeout(`${paperTraderUrl}/stats`, {}, 200);
+    if (statsRes.ok) {
+      const stats = await statsRes.json();
+      if (stats) {
+        currentBalance = stats.balance ?? currentBalance;
+        currentEquity = stats.equity ?? currentEquity;
+        d_dd = stats.max_drawdown_percent ?? d_dd;
+        w_dd = stats.max_drawdown_percent !== undefined && stats.max_drawdown_percent !== null ? stats.max_drawdown_percent * 1.5 : w_dd;
+      }
+    }
+
+    // Check history from paper_trader
+    const histRes = await fetchWithTimeout(`${paperTraderUrl}/history`, {}, 200);
+    if (histRes.ok) {
+      const liveHist = await histRes.json();
+      if (liveHist && Array.isArray(liveHist)) {
+        closedTradesList = liveHist.map((tp: any) => ({
+          id: String(tp.ticket || tp.id),
+          timestamp: tp.entry_time ? new Date(tp.entry_time * 1000).toISOString() : new Date().toISOString(),
+          instrument: tp.instrument || "XAUUSD",
+          direction: String(tp.direction || "BUY").toUpperCase(),
+          type: tp.strategy_id || tp.setup_type || "SMC Trade Setup",
+          entryPrice: parseFloat(tp.entry_price || 0),
+          exitPrice: parseFloat(tp.close_price || tp.exitPrice || 0),
+          stopLoss: parseFloat(tp.sl || 0),
+          takeProfit: parseFloat(tp.tp || 0),
+          lotSize: parseFloat(tp.lots || 1.0),
+          currentPrice: parseFloat(tp.close_price || currentPrice),
+          pnl: parseFloat(tp.profit || tp.pnl || 0.0),
+          status: "CLOSED",
+          stage: tp.mode || tp.stage || "paper",
+          riskPercent: parseFloat(tp.risk_pct || 0.5),
+          rrRatio: parseFloat(tp.r_ratio || 2.0),
+          closedAt: tp.close_time ? new Date(tp.close_time * 1000).toISOString() : new Date().toISOString(),
+          notes: `Concluded setup: ${String(tp.outcome || 'manual').toUpperCase()}`
+        }));
+      }
+    }
+  } catch (err) {
+    // Graceful fallback to simulated trades list in local state
+  }
+
   res.json({
-    active: trades,
-    closed: closedTrades,
-    balance,
-    equity: balance + trades.reduce((acc, t) => acc + t.pnl, 0),
-    dailyDDPercent: 0.85,  // Under max 4%
-    weeklyDDPercent: 1.45 // Under max 8%
+    active: activeTradesList,
+    closed: closedTradesList,
+    balance: currentBalance,
+    equity: currentEquity,
+    dailyDDPercent: parseFloat(d_dd.toFixed(2)),
+    weeklyDDPercent: parseFloat(w_dd.toFixed(2))
   });
 });
 
-app.post("/api/trades", (req, res) => {
+app.post("/api/trades", async (req, res) => {
   const { direction, type, entryPrice, stopLoss, takeProfit, lotSize, stage, riskPercent } = req.body;
   
   if (riskPercent > 1.0) {
     return res.status(400).json({ error: "SMC Risk Gatekeeper: Cannot execute trade. Risk percentage exceeds maximum allowed 1.0% setup limit." });
   }
 
+  const signalPayload = {
+    signal_id: "sig_" + Math.random().toString(36).substr(2, 5),
+    timestamp: Math.floor(Date.now() / 1000),
+    instrument: "XAUUSD",
+    direction: direction.toLowerCase(),
+    entry_price: parseFloat(entryPrice) || currentPrice,
+    entry_type: "market",
+    sl: parseFloat(stopLoss),
+    tp: parseFloat(takeProfit),
+    lots: parseFloat(lotSize) || 1.0,
+    timeframe: "M15",
+    strategy_id: "strat_1",
+    setup_type: type,
+    session: "New York",
+    mode: stage || "paper",
+    r_ratio: parseFloat(((takeProfit - entryPrice) / (entryPrice - stopLoss)).toFixed(2)) || 2.0,
+    confidence: "high",
+    agent_notes: `${stage} order route initiated directly from Hermes agent dashboard.`,
+    status: "pending"
+  };
+
+  try {
+    const paperTraderUrl = "http://paper_trader:5561";
+    const ptResponse = await fetchWithTimeout(`${paperTraderUrl}/signal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(signalPayload)
+    }, 400);
+
+    if (ptResponse.ok) {
+      const result = await ptResponse.json();
+      const pos = result.data || {};
+      const newTrade = {
+        id: String(pos.id || pos.ticket || signalPayload.signal_id),
+        timestamp: new Date().toISOString(),
+        instrument: "XAUUSD",
+        direction,
+        type,
+        entryPrice: signalPayload.entry_price,
+        stopLoss: signalPayload.sl,
+        takeProfit: signalPayload.tp,
+        lotSize: signalPayload.lots,
+        currentPrice,
+        pnl: 0,
+        status: "OPEN",
+        stage: stage || "paper",
+        riskPercent: parseFloat(riskPercent) || 0.5,
+        rrRatio: signalPayload.r_ratio,
+        notes: signalPayload.agent_notes
+      };
+
+      logs.push({
+        id: "log_" + Date.now(),
+        timestamp: new Date().toISOString(),
+        source: "MT5_ORDER",
+        level: "SUCCESS",
+        text: `Order Router (Broker Active): Successfully routed trade [${direction}] ticket to Paper Trader DB (ID: ${newTrade.id}) and Redis pipelines.`
+      });
+
+      return res.json(newTrade);
+    }
+  } catch (err) {
+    // If paper trader is unreachable, fallback to simulated trade local broker queue
+  }
+
+  // Gracefully fallback to simulated trade
   const newTrade = {
     id: "t_" + Math.random().toString(36).substr(2, 5),
     timestamp: new Date().toISOString(),
@@ -344,7 +638,7 @@ app.post("/api/trades", (req, res) => {
     stage: stage || "paper",
     riskPercent: parseFloat(riskPercent) || 0.5,
     rrRatio: parseFloat(((takeProfit - entryPrice) / (entryPrice - stopLoss)).toFixed(2)) || 2.0,
-    notes: `${stage} order route initiated directly from Hermes agent dashboard.`
+    notes: `${stage} order route initiated directly from Hermes agent dashboard (Simulated fallback offline).`
   };
 
   trades.push(newTrade);
@@ -354,14 +648,36 @@ app.post("/api/trades", (req, res) => {
     timestamp: new Date().toISOString(),
     source: "MT5_ORDER",
     level: "SUCCESS",
-    text: `Order Router: Successfully deployed [${direction}] trade ticket for ${newTrade.lotSize} lots at ${newTrade.entryPrice} on ZeroMQ Port 5557.`
+    text: `Order Router (Simulated): Successfully deployed [${direction}] trade ticket for ${newTrade.lotSize} lots at ${newTrade.entryPrice} on ZeroMQ Port 5557.`
   });
 
   res.json(newTrade);
 });
 
-app.post("/api/trades/close/:id", (req, res) => {
-  const tradeIndex = trades.findIndex(t => t.id === req.params.id);
+app.post("/api/trades/close/:id", async (req, res) => {
+  const tradeId = req.params.id;
+
+  try {
+    const paperTraderUrl = "http://paper_trader:5561";
+    const ptResponse = await fetchWithTimeout(`${paperTraderUrl}/close/${tradeId}`, {
+      method: "POST"
+    }, 500);
+
+    if (ptResponse.ok) {
+      logs.push({
+        id: "log_" + Date.now(),
+        timestamp: new Date().toISOString(),
+        source: "MT5_ORDER",
+        level: "INFO",
+        text: `Order Router: Successfully sent close signal to Paper Trader database for position ${tradeId}.`
+      });
+      return res.json({ id: tradeId, status: "CLOSED", notes: "Closed via Paper Trader backend endpoint." });
+    }
+  } catch (err) {
+    // Fallback to local array close logic
+  }
+
+  const tradeIndex = trades.findIndex(t => t.id === tradeId);
   if (tradeIndex !== -1) {
     const trade = trades[tradeIndex];
     trades.splice(tradeIndex, 1);
@@ -380,7 +696,7 @@ app.post("/api/trades/close/:id", (req, res) => {
       timestamp: new Date().toISOString(),
       source: "MT5_ORDER",
       level: "INFO",
-      text: `Order Router: Position ${completed.id} cleared. Net PnL realized: $${completed.pnl.toFixed(2)}`
+      text: `Order Router: Position ${completed.id} cleared. Net PnL realized (simulated fallback): $${completed.pnl.toFixed(2)}`
     });
 
     res.json(completed);
@@ -407,21 +723,52 @@ app.post("/api/logs", (req, res) => {
 });
 
 app.get("/api/vault", (req, res) => {
+  const vaultPath = "/data/obsidian";
+  if (fs.existsSync(vaultPath)) {
+    const realNotes = scanObsidianVault(vaultPath);
+    if (realNotes && realNotes.length > 0) {
+      return res.json(realNotes);
+    }
+  }
   res.json(obsidianNotes);
 });
 
 app.post("/api/vault", (req, res) => {
   const { title, content, folder, tags } = req.body;
-  const path = `${folder}/${title.replace(/\s+/g, '_')}.md`;
+  const fileName = `${title.replace(/\s+/g, '_')}.md`;
+  const folderPath = folder || "root";
+  const relativePath = folderPath !== "root" ? `${folderPath}/${fileName}` : fileName;
+  const vaultPath = "/data/obsidian";
+  const fullPath = path.join(vaultPath, relativePath);
+
+  if (fs.existsSync(vaultPath)) {
+    try {
+      const parentDir = path.dirname(fullPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.writeFileSync(fullPath, content, "utf-8");
+    } catch (err) {
+      console.error("Error writing note to mounted vault:", err);
+    }
+  }
+
   const newNote = {
-    path,
+    path: relativePath,
     title,
     content,
-    folder,
+    folder: folderPath,
     tags: tags || [],
     mtime: new Date().toISOString()
   };
-  obsidianNotes.push(newNote);
+  
+  // Update local index cache
+  const idx = obsidianNotes.findIndex(n => n.path === relativePath);
+  if (idx !== -1) {
+    obsidianNotes[idx] = newNote;
+  } else {
+    obsidianNotes.push(newNote);
+  }
   
   logs.push({
     id: "log_" + Date.now(),
@@ -556,7 +903,7 @@ Give your analysis in clear, highly professional Markdown formatting. Do not ass
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.5-flash",
       contents: customPrompt,
       config: {
         systemInstruction: "You are the core consciousness of the Hermes Trading Agent, a sophisticated SMC/ICT trading system designed for Gold. You are meticulous, speak with professional precision, and always demand rigorous risk management.",

@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from services.preprocessor import indicators
 
 def detect_fvg(bars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
