@@ -30,19 +30,12 @@ try {
 }
 
 // Global Simulated Hermes State
-let currentPrice = 2315.42;
-let balance = 100000.00;
-let dailyEquityStarting = 100000.00;
-let weeklyEquityStarting = 100000.00;
+let currentPrice = null;
+let balance = 0.0;
+let dailyEquityStarting = 0.0;
+let weeklyEquityStarting = 0.0;
 
-let trades: any[] = [
-  {
-    id: "t_1",
-    timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
-    instrument: "XAUUSD",
-    direction: "BUY",
-    type: "Order Block Tap",
-    entryPrice: 2310.50,
+let trades: any[] = [];
     stopLoss: 2305.00,
     takeProfit: 2325.00,
     lotSize: 2.0,

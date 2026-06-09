@@ -30,13 +30,13 @@ export default function App() {
   });
   
   const [marketMetrics, setMarketMetrics] = useState<MarketMetrics>({
-    currentPrice: 2315.42,
-    dailyHigh: 2329.80,
-    dailyLow: 2301.20,
+    currentPrice: 0.0,
+    dailyHigh: 0.0,
+    dailyLow: 0.0,
     sessions: {
-      asian: { open: false, range: "2301.20 - 2311.50" },
-      london: { open: true, range: "2304.20 - 2322.10" },
-      newYork: { open: true, range: "2310.50 - 2329.80" }
+      asian: { open: false, range: "" },
+      london: { open: false, range: "" },
+      newYork: { open: false, range: "" }
     },
     fairValueGaps: [],
     orderBlocks: [],
@@ -45,8 +45,8 @@ export default function App() {
 
   const [activeTrades, setActiveTrades] = useState<Trade[]>([]);
   const [closedTrades, setClosedTrades] = useState<Trade[]>([]);
-  const [balance, setBalance] = useState<number>(100000.00);
-  const [equity, setEquity] = useState<number>(100000.00);
+  const [balance, setBalance] = useState<number>(0.0);
+  const [equity, setEquity] = useState<number>(0.0);
   const [dailyDD, setDailyDD] = useState<number>(0.85);
   const [weeklyDD, setWeeklyDD] = useState<number>(1.45);
   

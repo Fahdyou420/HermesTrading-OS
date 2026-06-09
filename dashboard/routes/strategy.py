@@ -139,27 +139,8 @@ def run_strategy_backtest():
                             yield f"data: {json.dumps({'status': 'running', 'message': decoded})}\n\n"
                             
         except Exception as e:
-            # Fallback mock simulation progress steps if backtester service is offline but user needs dashboard visualization response
-            yield f"data: {json.dumps({'status': 'running', 'message': 'Backtester service offline. Simulating pipeline step...', 'progress': 25})}\n\n"
-            yield f"data: {json.dumps({'status': 'running', 'message': 'Processing chunk dataset historical rates...', 'progress': 55})}\n\n"
-            yield f"data: {json.dumps({'status': 'running', 'message': 'Evaluating Smart Money Concepts parameters...', 'progress': 85})}\n\n"
-            
-            # Formulate hypothetical results summary card
-            dummy_result = {
-                "status": "success",
-                "progress": 100,
-                "strategy_id": strategy_id,
-                "metrics": {
-                    "total_trades": 86,
-                    "win_rate": 0.558,
-                    "expectancy": 0.46,
-                    "max_drawdown": 6.12,
-                    "profit_factor": 1.74
-                },
-                "decision": "PASS"
-            }
-            yield f"data: {json.dumps(dummy_result)}\n\n"
-            
+            yield f"data: {json.dumps({'status': 'error', 'message': f'Backtester service is offline or unreachable: {str(e)}', 'progress': 0})}\n\n"
+        
         yield f"data: {json.dumps({'status': 'done', 'progress': 100})}\n\n"
         
     return Response(live_stream(), mimetype='text/event-stream', headers={

@@ -38,19 +38,6 @@ def save_queue(queue_data):
 @rnd_bp.route('/queue', methods=['GET'])
 def get_queue():
     queue = load_queue()
-    
-    # Pre-populate dummy item if empty, to look brilliant in preview layouts
-    if not queue:
-        queue = [
-            {
-                "id": "rnd_hyp_08a1b",
-                "hypothesis": "Test order blocks formed exclusively inside 15-minute imbalances on Gold during high spread intervals.",
-                "status": "pending",
-                "timestamp": int(time.time() - 3600)
-            }
-        ]
-        save_queue(queue)
-        
     return jsonify(queue)
 
 
@@ -91,34 +78,6 @@ def get_results():
                         "last_modified": mtime
                     })
                     
-        # Populate demo result if folder checks empty
-        if not results:
-            demo_result_filepath = os.path.join(RESULTS_DIR, "rnd_hyp_demo_result.json")
-            demo_data = {
-                "id": "rnd_hyp_demo_result",
-                "hypothesis": "Optimize FVG trigger sizes between 5 to 25 pips on M15 Gold.",
-                "total_backtest_simulations": 5,
-                "best_performance": {
-                    "fvg_min_size_pips": 15.0,
-                    "win_rate": 0.548,
-                    "expectancy": 0.51,
-                    "score": "PASS"
-                },
-                "conclusions": "Optimal performance occurs around 15 pips. Anything lower creates high spread drag, whereas values above 20 pips reduce trade count significantly.",
-                "status": "completed",
-                "timestamp": int(time.time())
-            }
-            try:
-                with open(demo_result_filepath, 'w', encoding='utf-8') as f:
-                    json.dump(demo_data, f, indent=2)
-                results.append({
-                    "id": "rnd_hyp_demo_result",
-                    "filename": "rnd_hyp_demo_result.json",
-                    "last_modified": time.time()
-                })
-            except Exception:
-                pass
-                
         results.sort(key=lambda x: x["last_modified"], reverse=True)
     except Exception as e:
         return jsonify({"error": f"Failed compiling R&D achievements: {str(e)}"}), 500

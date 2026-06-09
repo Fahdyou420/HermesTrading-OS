@@ -240,8 +240,8 @@
                     cell.className = "p-4 bg-gray-900/35 hover:bg-gray-900/60 border border-gray-900 hover:border-gray-800 rounded-lg cursor-pointer transition relative flex flex-col justify-between h-36 h-36";
                     
                     // Simple extracts
-                    const wr = strat.rules.metrics ? (strat.rules.metrics.win_rate * 100).toFixed(1) + "%" : "55.8%";
-                    const exp = strat.rules.metrics ? strat.rules.metrics.expectancy.toFixed(2) + " R" : "0.46 R";
+                    const wr = strat.rules.metrics ? (strat.rules.metrics.win_rate * 100).toFixed(1) + "%" : "N/A";
+                    const exp = strat.rules.metrics ? strat.rules.metrics.expectancy.toFixed(2) + " R" : "N/A";
                     
                     cell.innerHTML = `
                         <div class="space-y-1">
@@ -294,10 +294,10 @@
             // Render rules json
             document.getElementById('active-card-json').textContent = JSON.stringify(strat.rules, null, 2);
             
-            const metrics = strat.rules.metrics || { win_rate: 0.558, expectancy: 0.46, max_drawdown: 6.12 };
-            document.getElementById('active-metric-wr').textContent = (metrics.win_rate * 105 ? (metrics.win_rate * 100).toFixed(1) : "55.8") + "%";
-            document.getElementById('active-metric-exp').textContent = metrics.expectancy.toFixed(2) + " R";
-            document.getElementById('active-metric-dd').textContent = metrics.max_drawdown.toFixed(2) + "%";
+            const metrics = strat.rules.metrics || null;
+            document.getElementById('active-metric-wr').textContent = metrics ? (metrics.win_rate * 100).toFixed(1) + "%" : "No backtest data";
+            document.getElementById('active-metric-exp').textContent = metrics ? metrics.expectancy.toFixed(2) + " R" : "No backtest data";
+            document.getElementById('active-metric-dd').textContent = metrics ? metrics.max_drawdown.toFixed(2) + "%" : "No backtest data";
             
             // Overwrite badge
             const badgeBox = document.getElementById('active-card-badge');
@@ -511,16 +511,10 @@
 
         const ctx = document.getElementById('equity-chart-canvas').getContext('2d');
         
-        // Mock curve drawing simulating a premium sequence representing live or historical backtest profit targets
-        const labels = Array.from({ length: 40 }, (_, i) => i + 1);
-        let balance = 100000;
-        const data = [100000];
-        
-        for (let i = 1; i < 40; i++) {
-            const win = Math.random() < 0.55;
-            balance += win ? (Math.random() * 1800 + 400) : -(Math.random() * 800 + 100);
-            data.push(balance);
-        }
+        // Removed mock data curve entirely. In a real system, we'd fetch actual
+        // backtest series data points for this specific strategy id.
+        const labels = [];
+        const data = [];
 
         chartInstance = new Chart(ctx, {
             type: 'line',

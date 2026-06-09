@@ -19,7 +19,7 @@ COPY ./services/preprocessor /app/services/preprocessor
 COPY ./services/execution /app/services/execution
 
 # Expose port (typically 5562)
-EXPOSE 5562
+EXPOSE 5563
 
 # Start the execution service process
 CMD ["python", "-m", "services.execution.main"]

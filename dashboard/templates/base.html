@@ -147,18 +147,27 @@
         setInterval(updateClock, 1000);
         updateClock();
 
-        // Feed some live ticking to xauusd price mock
-        let basePrice = 2345.50;
-        function updateGoldMock() {
-            const change = (Math.random() - 0.5) * 0.40;
-            basePrice += change;
-            const el = document.getElementById('gold-spot-val');
-            if(el) {
-                el.textContent = `XAUUSD: ${basePrice.toFixed(2)}`;
+        async function updateGoldPrice() {
+            try {
+                const resp = await fetch('/api/market/price');
+                const data = await resp.json();
+                const el = document.getElementById('gold-spot-val');
+                if (el) {
+                    if (data.price && data.price > 0) {
+                        el.textContent = `XAUUSD: ${data.price.toFixed(2)}`;
+                        el.className = 'text-amber-500 font-medium';
+                    } else {
+                        el.textContent = 'XAUUSD: MT5 Offline';
+                        el.className = 'text-gray-600 font-medium';
+                    }
+                }
+            } catch(e) {
+                const el = document.getElementById('gold-spot-val');
+                if (el) el.textContent = 'XAUUSD: --';
             }
         }
-        setInterval(updateGoldMock, 2000);
-        updateGoldMock();
+        setInterval(updateGoldPrice, 5000);
+        updateGoldPrice();
     </script>
 </body>
 </html>

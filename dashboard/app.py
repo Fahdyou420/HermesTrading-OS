@@ -1,5 +1,6 @@
 import os
 import sys
+import requests
 from flask import Flask, Response, redirect, jsonify, render_template
 from flask_cors import CORS
 
@@ -48,6 +49,20 @@ def view_trades():
 @app.route('/rnd', methods=['GET'])
 def view_rnd():
     return render_template('rnd.html', active_page='rnd')
+
+@app.route('/api/market/price', methods=['GET'])
+def get_market_price():
+    try:
+        mt5_url = os.getenv("MT5_BRIDGE_URL", "http://mt5_bridge:5558")
+        resp = requests.get(f"{mt5_url}/latest_bars?n=1", timeout=5)
+        if resp.status_code == 200:
+            bars = resp.json()
+            if bars and len(bars) > 0:
+                price = bars[-1].get("close", 0.0)
+                return jsonify({"price": price})
+    except Exception as e:
+        print(f"Failed to fetch market price: {e}")
+    return jsonify({"price": 0.0})
 
 # HTMX System status endpoint returns HTML status component directly
 @app.route('/api/status', methods=['GET'])

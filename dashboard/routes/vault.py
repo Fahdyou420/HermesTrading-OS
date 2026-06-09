@@ -14,22 +14,6 @@ if not os.path.exists(OBSIDIAN_VAULT_PATH):
         os.makedirs(os.path.join(OBSIDIAN_VAULT_PATH, "02_STRATEGIES/XAUUSD"), exist_ok=True)
         os.makedirs(os.path.join(OBSIDIAN_VAULT_PATH, "03_TRADE_JOURNAL/weekly_reviews"), exist_ok=True)
         os.makedirs(os.path.join(OBSIDIAN_VAULT_PATH, "04_BACKTEST_REPORTS/XAUUSD"), exist_ok=True)
-        
-        # Populate clean demo note for testing consistency
-        demo_note_path = os.path.join(OBSIDIAN_VAULT_PATH, "01_MARKET_STUDIES/XAUUSD/M15/market_study_demo.md")
-        if not os.path.exists(demo_note_path):
-            with open(demo_note_path, 'w', encoding='utf-8') as f:
-                f.write("""---
-tags: [market-study, gold, smc, structural-scan]
-instrument: XAUUSD
-timeframe: M15
-date: 2026-06-08
-session: London_Open
-bias: Bullish
----
-# SMC Market Structure Study - XAUUSD [M15]
-Demonstration note representing high-displacement FVG mitigations on Gold.
-""")
     except Exception as e:
         print(f"Failed to auto-setup mock Obsidian structure: {e}")
 

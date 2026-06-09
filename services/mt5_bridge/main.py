@@ -142,21 +142,13 @@ async def get_backtest_files():
 
 # Live MT5 Environment State Cache
 account_state_store = {
-    "balance": 10000.0,
-    "equity": 10000.0,
+    "balance": 0.0,
+    "equity": 0.0,
     "daily_dd_pct": 0.0,
     "weekly_dd_pct": 0.0
 }
 positions_store = []
-calendar_events_store = [
-    {
-        "id": "cal_cpi",
-        "title": "US CPI Consumer Price Index",
-        "impact": "high",
-        "timestamp": 1780000000,
-        "currency": "USD"
-    }
-]
+calendar_events_store = []
 
 @app.get("/account_state")
 async def get_account_state():
