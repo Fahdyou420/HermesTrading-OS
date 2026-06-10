@@ -21,12 +21,12 @@ export default function App() {
   
   // App states
   const [status, setStatus] = useState<SystemStatus>({
-    ollama: 'connected',
-    hermesRpc: 'connected',
-    mt5Zmq: { data: 'connected', draw: 'connected', order: 'connected' },
-    redis: 'connected',
-    chromaDb: 'connected',
-    obsidian: 'connected'
+    ollama: 'disconnected',
+    hermesRpc: 'disconnected',
+    mt5Zmq: { data: 'disconnected', draw: 'disconnected', order: 'disconnected' },
+    redis: 'disconnected',
+    chromaDb: 'disconnected',
+    obsidian: 'disconnected'
   });
   
   const [marketMetrics, setMarketMetrics] = useState<MarketMetrics>({
@@ -47,8 +47,8 @@ export default function App() {
   const [closedTrades, setClosedTrades] = useState<Trade[]>([]);
   const [balance, setBalance] = useState<number>(0.0);
   const [equity, setEquity] = useState<number>(0.0);
-  const [dailyDD, setDailyDD] = useState<number>(0.85);
-  const [weeklyDD, setWeeklyDD] = useState<number>(1.45);
+  const [dailyDD, setDailyDD] = useState<number>(0);
+  const [weeklyDD, setWeeklyDD] = useState<number>(0);
   
   const [logs, setLogs] = useState<any[]>([]);
   const [notes, setNotes] = useState<ObsidianNote[]>([]);
@@ -63,87 +63,57 @@ export default function App() {
   const [loading, setLoading] = useState(false);
 
   // Strategy Card states
-  const [strategyCards, setStrategyCards] = useState<StrategyCard[]>([
-    {
-      id: 'strat_1',
-      title: 'Spot Gold Liquidity Sweep Breakouts',
-      instrument: 'XAUUSD',
-      stage: 'live',
-      winRate: 68.4,
-      profitFactor: 2.14,
-      totalTrades: 112,
-      rules: [
-        'Identify HTF Bias: H1 or Daily swing orientation.',
-        'Wait for London or NY open to sweep Asian High/Low.',
-        'Verify immediate body displacement breaking structural swing on M1.',
-        'Place Limit orders at the 50% Mean Threshold of M1 bullish/bearish FVG.'
-      ],
-      riskModel: { maxRisk: 0.01, maxDailyDD: 0.04, maxWeeklyDD: 0.08 },
-      description: 'Captures fast gold reversals during New York Killzone openings after liquidity sweeps are finalized. Extremely effective under high-volatility session hours.'
-    },
-    {
-      id: 'strat_2',
-      title: 'H4 Order Block Rebound Mitigation',
-      instrument: 'XAUUSD',
-      stage: 'paper',
-      winRate: 60.5,
-      profitFactor: 1.85,
-      totalTrades: 45,
-      rules: [
-        'Establish direction following clean Break of Structure (BMS) on H4.',
-        'Mark the high-volume last down/up candle of consolidation as Order Block.',
-        'Deploy entry orders strictly when spot returns to test OB boundaries.',
-        'Close out immediately if price expands 1 ATR range beyond OB low.'
-      ],
-      riskModel: { maxRisk: 0.01, maxDailyDD: 0.04, maxWeeklyDD: 0.08 },
-      description: 'Slow-moving institutional accumulation pattern. Requires high patience, target holding periods spanning multiple trading sessions.'
-    },
-    {
-      id: 'strat_3',
-      title: 'Silver Divergence SMT Correlation Edge',
-      instrument: 'XAUUSD',
-      stage: 'hypothesis',
-      winRate: 72.1,
-      profitFactor: 2.38,
-      totalTrades: 8,
-      rules: [
-        'Track correlated indexes: XAUUSD vs XAGUSD (Gold vs Silver).',
-        'Detect SMT Divergence: Gold makes new high, Silver fails to make new high (or vice-versa).',
-        'Confirms institutional distribution setup in key index.',
-        'Formulate immediate trade proposal logged directly as stage: hypothesis.'
-      ],
-      riskModel: { maxRisk: 0.005, maxDailyDD: 0.04, maxWeeklyDD: 0.08 },
-      description: 'High-frequency correlation mismatch setup. Currently undergoing rigorous backtesting validation loops to verify risk limits prior to paper deployment.'
-    }
-  ]);
+  const [strategyCards, setStrategyCards] = useState<StrategyCard[]>([]);
 
   // Load backend telemetry data
   const fetchAllData = async () => {
     try {
-      const [resStatus, resMarket, resTrades, resLogs, resVault, resSkills, resLoops] = await Promise.all([
+      const [resStatus, resMarket, resTrades, resLogs, resVault, resSkills, resLoops, resStrategies] = await Promise.all([
         fetch('/api/status').then(r => r.json()),
         fetch('/api/market').then(r => r.json()),
         fetch('/api/trades').then(r => r.json()),
         fetch('/api/logs').then(r => r.json()),
         fetch('/api/vault').then(r => r.json()),
         fetch('/api/skills').then(r => r.json()),
-        fetch('/api/loops').then(r => r.json())
+        fetch('/api/loops').then(r => r.json()),
+        fetch('/api/strategy/list').then(r => r.json()).catch(() => [])
       ]);
 
       setStatus(resStatus);
-      setMarketMetrics(resMarket);
+      setMarketMetrics({
+        ...resMarket,
+        currentPrice: resMarket.currentPrice || 0,
+        dailyHigh: resMarket.dailyHigh || 0,
+        dailyLow: resMarket.dailyLow || 0
+      });
       
-      setActiveTrades(resTrades.active);
-      setClosedTrades(resTrades.closed);
-      setBalance(resTrades.balance);
-      setEquity(resTrades.equity);
-      setDailyDD(resTrades.dailyDDPercent);
-      setWeeklyDD(resTrades.weeklyDDPercent);
+      setActiveTrades(resTrades.active || []);
+      setClosedTrades(resTrades.closed || []);
+      setBalance(resTrades.balance || 0);
+      setEquity(resTrades.equity || 0);
+      setDailyDD(resTrades.dailyDDPercent || 0);
+      setWeeklyDD(resTrades.weeklyDDPercent || 0);
 
       setLogs(resLogs);
       setNotes(resVault);
       setSkills(resSkills);
       setLoops(resLoops);
+
+      if (resStrategies && Array.isArray(resStrategies) && resStrategies.length > 0) {
+        const mappedCards: StrategyCard[] = resStrategies.map((s: any) => ({
+          id: s.id,
+          title: s.name,
+          instrument: s.instrument || 'XAUUSD',
+          stage: s.status as TrustStage,
+          winRate: s.rules?.metrics?.win_rate ? s.rules.metrics.win_rate * 100 : 0,
+          profitFactor: s.rules?.metrics?.profit_factor || 0,
+          totalTrades: s.rules?.metrics?.total_trades || 0,
+          rules: Array.isArray(s.rules?.entry_rules) ? s.rules.entry_rules : [],
+          riskModel: { maxRisk: 0.01, maxDailyDD: 0.04, maxWeeklyDD: 0.08 },
+          description: s.content?.split('\n').slice(0, 3).join(' ') || s.name
+        }));
+        setStrategyCards(mappedCards);
+      }
 
     } catch (err) {
       console.error("Failed to sync backend state:", err);

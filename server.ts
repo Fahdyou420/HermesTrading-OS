@@ -34,171 +34,18 @@ let currentPrice = null;
 let balance = 0.0;
 let dailyEquityStarting = 0.0;
 let weeklyEquityStarting = 0.0;
+let lastMT5DataTimestamp: number | null = null;
 
 let trades: any[] = [];
-    stopLoss: 2305.00,
-    takeProfit: 2325.00,
-    lotSize: 2.0,
-    currentPrice: 2315.42,
-    pnl: 984.00,
-    status: "OPEN",
-    stage: "paper",
-    riskPercent: 0.9,
-    rrRatio: 2.6,
-    notes: "New York session open sweep of London Low, tapping bullish H1 Order Block."
-  },
-  {
-    id: "t_2",
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-    instrument: "XAUUSD",
-    direction: "SELL",
-    type: "FVG Retest",
-    entryPrice: 2322.10,
-    stopLoss: 2326.50,
-    takeProfit: 2312.00,
-    lotSize: 1.5,
-    currentPrice: 2315.42,
-    pnl: 1002.00,
-    status: "OPEN",
-    stage: "live",
-    riskPercent: 0.8,
-    rrRatio: 2.3,
-    notes: "H4 Bearish Fair Value Gap partial fill with SMT divergence in USD index."
-  }
-];
 
-let closedTrades: any[] = [
-  {
-    id: "t_c1",
-    timestamp: new Date(Date.now() - 86400000).toISOString(),
-    instrument: "XAUUSD",
-    direction: "BUY",
-    type: "Liquidity Sweep",
-    entryPrice: 2304.20,
-    stopLoss: 2299.00,
-    takeProfit: 2314.50,
-    exitPrice: 2314.50,
-    lotSize: 1.8,
-    currentPrice: 2314.50,
-    pnl: 1854.00,
-    status: "CLOSED",
-    stage: "live",
-    riskPercent: 0.94,
-    rrRatio: 1.98,
-    closedAt: new Date(Date.now() - 86000000).toISOString(),
-    notes: "Asian high sweep after London opening. Fully hit take profit."
-  },
-  {
-    id: "t_c2",
-    timestamp: new Date(Date.now() - 172800000).toISOString(),
-    instrument: "XAUUSD",
-    direction: "SELL",
-    type: "Order Block Tap",
-    entryPrice: 2328.00,
-    stopLoss: 2332.00,
-    takeProfit: 2318.00,
-    exitPrice: 2332.00,
-    lotSize: 2.5,
-    currentPrice: 2332.00,
-    pnl: -1000.00,
-    status: "CLOSED",
-    stage: "paper",
-    riskPercent: 1.0,
-    rrRatio: 2.5,
-    closedAt: new Date(Date.now() - 171000000).toISOString(),
-    notes: "Tapped bearish OB but news spikes swept stop-loss before target. Max risk limit protected equity."
-  }
-];
-
-let fairValueGaps: any[] = [
-  { id: "f_1", timestamp: new Date(Date.now() - 7200000).toISOString(), type: "BULLISH", high: 2312.00, low: 2308.20, midPoint: 2310.10, status: "ACTIVE" },
-  { id: "f_2", timestamp: new Date(Date.now() - 18000000).toISOString(), type: "BEARISH", high: 2331.40, low: 2328.10, midPoint: 2329.75, status: "ACTIVE" }
-];
-
-let orderBlocks: any[] = [
-  { id: "o_1", timestamp: new Date(Date.now() - 28800000).toISOString(), direction: "BULLISH", top: 2306.00, bottom: 2300.50, volume: 1540, status: "ACTIVE" },
-  { id: "o_2", timestamp: new Date(Date.now() - 43200000).toISOString(), direction: "BEARISH", top: 2334.50, bottom: 2329.00, volume: 1890, status: "ACTIVE" }
-];
-
-let liquidityPools: any[] = [
-  { id: "l_1", type: "BSL", price: 2338.50, timestamp: new Date(Date.now() - 21600000).toISOString(), swept: false },
-  { id: "l_2", type: "SSL", price: 2298.10, timestamp: new Date(Date.now() - 21600000).toISOString(), swept: false }
-];
-
+let closedTrades: any[] = [];
+let fairValueGaps: any[] = [];
+let orderBlocks: any[] = [];
+let liquidityPools: any[] = [];
+let obsidianNotes: any[] = [];
+let skills: any[] = [];
 let logs: any[] = [
-  { id: "log_1", timestamp: new Date(Date.now() - 10000).toISOString(), source: "SYSTEM", level: "INFO", text: "Hermes Autonomous Core daemon v0.15.2 initialized successfully." },
-  { id: "log_2", timestamp: new Date(Date.now() - 9000).toISOString(), source: "RPC", level: "SUCCESS", text: "Successfully connected to Hermes Host RPC server at http://host.docker.internal:7778" },
-  { id: "log_3", timestamp: new Date(Date.now() - 8000).toISOString(), source: "MT5_DATA", level: "SUCCESS", text: "MetaTrader 5 ZeroMQ Bridges linked: DATA:5555 connected" },
-  { id: "log_4", timestamp: new Date(Date.now() - 7500).toISOString(), source: "MT5_ORDER", level: "SUCCESS", text: "MetaTrader 5 ZeroMQ Bridges linked: ORDER:5557 ready" },
-  { id: "log_5", timestamp: new Date(Date.now() - 7000).toISOString(), source: "REDIS", level: "INFO", text: "Redis Pub/Sub listening on redis://redis:6379 channels [hermes:signals, hermes:logs]" },
-  { id: "log_6", timestamp: new Date(Date.now() - 6500).toISOString(), source: "CHROMA", level: "SUCCESS", text: "Vector Database mapped to ChromaDB server at http://chromadb:8000" },
-  { id: "log_7", timestamp: new Date(Date.now() - 6000).toISOString(), source: "SYSTEM", level: "INFO", text: "Obsidian Vault mounted at /data/obsidian (Local disk sync enabled)." },
-  { id: "log_8", timestamp: new Date(Date.now() - 5000).toISOString(), source: "OLLAMA", level: "SUCCESS", text: "Ollama LLM connection verified at http://host.docker.internal:11434 with model hermes-3-llama-3.1" },
-  { id: "log_9", timestamp: new Date(Date.now() - 3000).toISOString(), source: "SYSTEM", level: "INFO", text: "Loading custom SMC strategies from Obsidian /Strategy Cards/..." },
-  { id: "log_10", timestamp: new Date(Date.now() - 1000).toISOString(), source: "SYSTEM", level: "SUCCESS", text: "Active trading methodology target: XAUUSD (Gold Intraday SMC/ICT Scalping)." }
-];
-
-let obsidianNotes: any[] = [
-  {
-    path: "Strategy Cards/XAUUSD_Liquidity_Sweep.md",
-    title: "XAUUSD Liquidity Sweep & Displacement Strategy",
-    content: "# XAUUSD Liquidity Sweep Strategy\n\n**Instrument**: XAUUSD\n**Timeframes**: Daily/H1 for Bias, M5/M1 for Entries\n\n## Core Rules\n1. Wait for Asian Session High/Low or Prev Daily High/Low to be swept.\n2. Look for strong Displacement in the opposite direction on M1/M5, leaving a Fair Value Gap (FVG).\n3. Set Buy/Sell Limit at the premium/discount level of the newly formed FVG.\n4. Risk strictly 1.0% per trade. Stop loss goes below/above the sweep candle swinging structure.\n\n## Status\nCurrent Stage: **live**\nWin Rate: 68%\nProfit Factor: 2.14",
-    folder: "Strategy Cards",
-    tags: ["SMC", "ICT", "XAUUSD", "Liquidity", "Live"],
-    mtime: new Date(Date.now() - 86400000 * 2).toISOString()
-  },
-  {
-    path: "Strategy Cards/Order_Block_Mitigation.md",
-    title: "Order Block Mitigation Strategy",
-    content: "# Order Block Mitigation Strategy\n\n**Instrument**: XAUUSD\n**Timeframes**: H4/H1 Bias, M5 Entries\n\n## Core Rules\n1. Identify a high-volume candle before an impulsive break of structure (BMS/MSD).\n2. Mark this candle zone as the Bullish or Bearish Order Block (OB).\n3. Place entry limit orders at the 50% Mean Threshold or the Open price of the OB candle, depending on risk tolerance.\n4. Close trade if immediate structure is broken against the setup.\n\n## Status\nCurrent Stage: **paper**\nWin Rate: 60%\nProfit Factor: 1.85",
-    folder: "Strategy Cards",
-    tags: ["OB", "Mitigation", "Gold", "SMC", "Paper"],
-    mtime: new Date(Date.now() - 86400000 * 5).toISOString()
-  },
-  {
-    path: "Trade Logs/XAUUSD_Sweep_Success_2026-06-07.md",
-    title: "Trade Review: London Low Sweep Recovery",
-    content: "# Trade Review - June 7, 2026\n\n* **Direction**: BUY\n* **Entry Level**: 2304.20\n* **Risk**: 0.94%\n* **P&L**: +$1,854.00 (Success)\n\n## Hypothesis & Setup\nLondon open took out Asian Low. Sharp displacement upwards on M1 left a clean bullish FVG. Entry took place on the retest. Trade reached full target at New York pre-market high.\n\n## Lesson\nDisplacement was fast. High spread during London open requires setting entry orders 0.2 pips above the FVG top.",
-    folder: "Trade Logs",
-    tags: ["TradeReview", "Gold", "Displacement", "Success"],
-    mtime: new Date(Date.now() - 40000000).toISOString()
-  }
-];
-
-let skills: any[] = [
-  {
-    name: "skill_liquidity_sweep_detector.py",
-    description: "Detects real-time buy-stop/sell-stop liquidity sweeps in M1-M5 data and publishes events to Redis.",
-    code: `import numpy as np
-import pandas as pd
-
-def detect_liquidity_sweep(highs, lows, closes, threshold=0.0005):
-    """
-    SMC/ICT Sweep Detector
-    Calculates swing highs/lows and verifies shadow penetration with immediate body displacement.
-    """
-    sweeps = []
-    # Identify local peaks from high-volume sessions
-    # (Implementation verified on MT5 Tick feeds)
-    return sweeps`,
-    successRate: 84.5,
-    usageCount: 328,
-    lastUpdated: new Date(Date.now() - 86400000 * 3).toISOString()
-  },
-  {
-    name: "skill_fvg_mitigation_tracker.py",
-    description: "Tracks active H1/M15 Fair Value Gaps and marks them as mitigated upon tick overlap.",
-    code: `def track_fvg_mitigation(ticks, active_fvgs):
-    """
-    Monitors live bid/ask quotes and flags gaps that have been 50% or 100% neutralized.
-    """
-    updated_fvgs = []
-    # Real-time overlap evaluation
-    return updated_fvgs`,
-    successRate: 78.2,
-    usageCount: 512,
-    lastUpdated: new Date(Date.now() - 86400000 * 6).toISOString()
-  }
+  { id: "log_boot_1", timestamp: new Date().toISOString(), source: "SYSTEM", level: "INFO", text: "Hermes server process started. Waiting for service connections..." }
 ];
 
 let autonomousLoops = {
@@ -208,13 +55,17 @@ let autonomousLoops = {
   hypothesisRandD: { lastRun: new Date(Date.now() - 1200000).toISOString(), status: "RUNNING", outcome: "Simulating backtests for aggressive New York Silver Divergence logic on M1." }
 };
 
-// Periodic tick simulation to simulate live MT5 Tick feeds
+// Only run tick simulation if MT5 is not providing real data AND we have a seed price
 setInterval(() => {
-  // Move price a bit
-  const change = (Math.random() - 0.495) * 0.4; // Slightly positive bias
+  if (currentPrice === null || currentPrice === undefined || isNaN(currentPrice)) return;
+  
+  // Only simulate if we haven't received real MT5 data recently
+  const now = Date.now();
+  if (lastMT5DataTimestamp && (now - lastMT5DataTimestamp) < 10000) return;
+  
+  const change = (Math.random() - 0.495) * 0.4;
   currentPrice = parseFloat((currentPrice + change).toFixed(2));
   
-  // Randomly update open trades P&L
   trades = trades.map(t => {
     let pnl = t.pnl;
     if (t.direction === "BUY") {
@@ -225,51 +76,7 @@ setInterval(() => {
     return { ...t, currentPrice, pnl: parseFloat(pnl.toFixed(2)) };
   });
 
-  // Periodically add active or mitigated FVGs / swept liquidity
-  if (Math.random() > 0.98) {
-    const isBull = Math.random() > 0.5;
-    const keyPrice = currentPrice + (Math.random() - 0.5) * 10;
-    const fvgType = isBull ? "BULLISH" : "BEARISH";
-    fairValueGaps.push({
-      id: "f_" + Math.random().toString(36).substr(2, 5),
-      timestamp: new Date().toISOString(),
-      type: fvgType,
-      high: parseFloat((keyPrice + 1.2).toFixed(2)),
-      low: parseFloat((keyPrice - 1.2).toFixed(2)),
-      midPoint: parseFloat(keyPrice.toFixed(2)),
-      status: "ACTIVE"
-    });
-    
-    logs.push({
-      id: "log_" + Date.now(),
-      timestamp: new Date().toISOString(),
-      source: "MT5_DATA",
-      level: "INFO",
-      text: `SMC Discovery: New H1 ${fvgType} Fair Value Gap formed near ${keyPrice.toFixed(2)}`
-    });
-  }
-
-  // Sweep Liquidity Pool
-  liquidityPools = liquidityPools.map(l => {
-    if (!l.swept) {
-      if ((l.type === "BSL" && currentPrice >= l.price) || (l.type === "SSL" && currentPrice <= l.price)) {
-        logs.push({
-          id: "log_" + Date.now(),
-          timestamp: new Date().toISOString(),
-          source: "REDIS",
-          level: "SUCCESS",
-          text: `SMC SIGNAL SENT: Liquidity sweep triggered at ${l.type} pool (${l.price}). Dispatching order rule.`
-        });
-        return { ...l, swept: true, sweptAt: new Date().toISOString() };
-      }
-    }
-    return l;
-  });
-
-  // Trim logs if they become too many
-  if (logs.length > 100) {
-    logs.shift();
-  }
+  if (logs.length > 100) logs.shift();
 }, 3000);
 
 // Helper to fetch with an abort controller timeout (bug-proof cross-platform)
@@ -418,6 +225,7 @@ app.get("/api/market", async (req, res) => {
         high = Math.max(...bars.map((b: any) => b.high));
         low = Math.min(...bars.map((b: any) => b.low));
         currentPrice = price; // sync internal state
+        lastMT5DataTimestamp = Date.now();
       }
     }
   } catch (e) {}
@@ -458,8 +266,8 @@ app.get("/api/trades", async (req, res) => {
   let closedTradesList = closedTrades;
   let currentBalance = balance;
   let currentEquity = balance + trades.reduce((acc, t) => acc + t.pnl, 0);
-  let d_dd = 0.85;
-  let w_dd = 1.45;
+  let d_dd = 0.0;
+  let w_dd = 0.0;
 
   try {
     const paperTraderUrl = "http://paper_trader:5561";
@@ -775,7 +583,36 @@ app.post("/api/vault", (req, res) => {
 });
 
 app.get("/api/skills", (req, res) => {
-  res.json(skills);
+  const skillDirs = [
+    "/data/obsidian/04_KNOWLEDGE_BASE/skills",
+    "/home/claude/.hermes/skills/trading"
+  ];
+  
+  const diskSkills: any[] = [];
+  
+  for (const dir of skillDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir).filter(f => f.endsWith('.py') || f.endsWith('.md'));
+        for (const file of files) {
+          const filePath = path.join(dir, file);
+          const stat = fs.statSync(filePath);
+          const content = fs.readFileSync(filePath, 'utf-8');
+          diskSkills.push({
+            name: file,
+            description: content.split('\n').find(l => l.startsWith('"""') || l.startsWith('#'))?.replace(/^[#"]+/, '').trim() || file,
+            code: content,
+            successRate: 0,
+            usageCount: 0,
+            lastUpdated: stat.mtime.toISOString()
+          });
+        }
+      } catch (e) {}
+    }
+  }
+  
+  // Return disk skills if found, otherwise return the in-memory skills array (user-added via POST)
+  res.json(diskSkills.length > 0 ? diskSkills : skills);
 });
 
 app.post("/api/skills", (req, res) => {
@@ -925,6 +762,20 @@ async function startServer() {
     app.get('*', (req: any, res: any) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  }
+
+  // Try to seed currentPrice from MT5 bridge at startup
+  try {
+    const seedRes = await fetchWithTimeout("http://mt5_bridge:5558/latest_bars?instrument=XAUUSD&tf=M15&n=1", {}, 3000);
+    if (seedRes.ok) {
+      const bars = await seedRes.json();
+      if (bars && bars.length > 0) {
+        currentPrice = bars[bars.length - 1].close;
+        console.log(`[Startup] Seeded price from MT5: ${currentPrice}`);
+      }
+    }
+  } catch (e) {
+    console.log("[Startup] MT5 not available yet, currentPrice stays null until first market poll.");
   }
 
   app.listen(PORT, "0.0.0.0", () => {

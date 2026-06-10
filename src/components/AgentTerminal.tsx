@@ -74,30 +74,37 @@ export default function AgentTerminal({ logs, onAddLog }: AgentTerminalProps) {
           break;
 
         case '/status':
-          addLine('tool-call', 'Dispatching query to RPC Server http://host.docker.internal:7778...');
-          setTimeout(() => {
-            addLine('success', `[DIAGNOSTICS - OK]
-  Ollama Engine  : Connected (Model: hermes-3-llama-3.1)
-  RPC Listener   : Online (Port 7778)
-  Redis Pub/Sub  : Active (redis://redis:6379)
-  ZeroMQ DATA     : Open (Port 5555)
-  ZeroMQ ORDER    : Open (Port 5557)
-  ChromaDB       : Up (chromadb:8000)
-  Obsidian Vault : Mounted (/data/obsidian)`);
-          }, 600);
+          addLine('tool-call', 'Dispatching system status query...');
+          try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            addLine('success', `[DIAGNOSTICS]
+  Ollama Engine  : ${data.ollama}
+  RPC Listener   : ${data.hermesRpc}
+  Redis Pub/Sub  : ${data.redis}
+  ZeroMQ DATA    : ${data.mt5Zmq?.data}
+  ZeroMQ ORDER   : ${data.mt5Zmq?.order}
+  ChromaDB       : ${data.chromaDb}
+  Obsidian Vault : ${data.obsidian}`);
+          } catch (e) {
+            addLine('error', 'Status check failed.');
+          }
           break;
 
         case '/risk':
           addLine('tool-call', 'Security Auditor: Fetching active risk constraints...');
-          setTimeout(() => {
+          try {
+            const res = await fetch('/api/trades');
+            const data = await res.json();
             addLine('output', `[HERMES INTRA-DAY RISK BOUNDARIES]
   • Max Risk Per Trade  : 1.0% of nominal margin (STRICTLY COMPLIED)
-  • Max Daily Drawdown  : 4.0%
-  • Max Weekly Drawdown : 8.0%
-  • Primary Instrument  : XAUUSD (Spot Gold / Dollar)
-  • Live Sized Stage    : paper / live_candidate
-  • Verification Engine : RiskGatekeeper (Layer 4) active rejection enabled.`);
-          }, 500);
+  • Active Exposure     : ${data.active?.length || 0} Open Trades
+  • Sub-Account Daily DD: ${(data.dailyDDPercent || 0).toFixed(2)}% (Max 4.0%)
+  • Strategy Weekly DD  : ${(data.weeklyDDPercent || 0).toFixed(2)}% (Max 8.0%)
+  • Risk Status         : NORMAL`);
+          } catch (e) {
+            addLine('error', 'Risk audit check failed.');
+          }
           break;
 
         case '/clear':
@@ -105,29 +112,26 @@ export default function AgentTerminal({ logs, onAddLog }: AgentTerminalProps) {
           break;
 
         case '/vault':
-          addLine('tool-call', 'Broadcasting FTS5 Full-Text search query across mounted Obsidian vaults...');
-          setTimeout(() => {
+          addLine('tool-call', 'Querying mounted Obsidian vaults...');
+          try {
+            const res = await fetch('/api/vault');
+            const data = await res.json();
             addLine('success', `[OBSIDIAN DOCUMENT BASE]
-  Found 3 Strategy Cards, 14 Intraday session logs, and 8 hypothesis drafts.
-  Active index keywords: [SMC, ICT, Gold, Displacement, FairValueGap, OrderBlock]`);
-          }, 850);
+  Found ${data.length} synchronized files.
+  Database online. RAG ready.`);
+          } catch (e) {
+            addLine('error', 'Vault check failed.');
+          }
           break;
 
         case '/backtest':
-          addLine('tool-call', 'Spawning walk-forward backtest agent inside Docker isolates. Grounding setup criteria: XAUUSD, Asian High Sweeps...');
-          setIsTyping(true);
-          setTimeout(() => {
-            setIsTyping(false);
-            addLine('success', `[BACKTEST RUN RESULT - XAUUSD]
-  Dataset Period : 2026-05-01 to 2026-06-05
-  Total Trades   : 34
-  Win Rate (WR)  : 64.71%
-  Profit Factor  : 2.11
-  Max Drawdown   : 1.84% of virtual portfolio
-  Sharpe Ratio   : 2.35
-  
-  Conclusion: Backtest verified. Upgradable to 'paper' status. Note written to Obsidian.`);
-          }, 2400);
+          addLine('tool-call', 'Initiating backtest queue. Strategy validation will run in background thread.');
+          try {
+            await fetch('/api/loops/backtest', { method: 'POST' });
+            addLine('success', 'Backtest requested successfully. Monitor autonomous loops table for results.');
+          } catch (e) {
+            addLine('error', 'Dispatching backtest loop failed.');
+          }
           break;
 
         case '/sweep':

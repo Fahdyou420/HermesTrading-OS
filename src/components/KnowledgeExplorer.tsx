@@ -20,26 +20,36 @@ export default function KnowledgeExplorer({ notes, onAddNote }: KnowledgeExplore
   const [newTagsStr, setNewTagsStr] = useState('');
   
   // ChromaDB Vector Search results mock configuration
-  const [chromaResults, setChromaResults] = useState<ChromaDocument[]>([
-    {
-      id: 'doc_1',
-      text: 'Displacement occurs when price expands strongly from an consolidated area leaving a clear gap. If the impulse breaks a swing peak, it is a Market Structure Shift (MSS). Limit entries are placed in the discount section of the resulting Fair Value Gap.',
-      metadata: { source: 'Strategy Cards/XAUUSD_Liquidity_Sweep.md', stage: 'live', timestamp: '2026-06-03' },
-      distance: 0.12
-    },
-    {
-      id: 'doc_2',
-      text: 'Fair Value Gaps (FVG) or imbalance parameters are defined on a 3-candle matrix. The first candle shadow and third candle shadow must not overlap, verifying a gap of liquidity where the market maker accelerated quotes.',
-      metadata: { source: 'Systems/SMC_Vocabulary_RAG.md', stage: 'hypothesis', timestamp: '2026-05-28' },
-      distance: 0.28
-    },
-    {
-      id: 'doc_3',
-      text: 'Reviewed successful gold buy on London Open. Key sweep of 2305 asian low tap into structural liquidity prior to 20-dollar displacement. Execution was flawless but high spread was noted.',
-      metadata: { source: 'Trade Logs/XAUUSD_Sweep_Success_2026-06-07.md', stage: 'live', timestamp: '2026-06-07' },
-      distance: 0.35
+  const [chromaResults, setChromaResults] = useState<ChromaDocument[]>([]);
+  const [chromaLoading, setChromaLoading] = useState(false);
+  const [chromaQuery, setChromaQuery] = useState('XAUUSD SMC strategy');
+
+  const fetchChromaResults = async (query: string) => {
+    if (!query.trim()) return;
+    setChromaLoading(true);
+    try {
+      const res = await fetch('/api/vault/search?q=' + encodeURIComponent(query));
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setChromaResults(data.map((item: any, idx: number) => ({
+          id: item.path || `doc_${idx}`,
+          text: item.excerpt || item.content || '',
+          metadata: { source: item.path, stage: '', timestamp: '' },
+          distance: 0
+        })));
+      }
+    } catch (e) {
+      setChromaResults([]);
+    } finally {
+      setChromaLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'chromadb') {
+      fetchChromaResults(chromaQuery);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (notes.length > 0 && !selectedNote) {
@@ -304,6 +314,23 @@ export default function KnowledgeExplorer({ notes, onAddNote }: KnowledgeExplore
                     <p className="text-slate-500 text-[10px] mt-1">
                       Showing chunk indices mapping semantic search similarities directly loaded inside high-performance DB caches.
                     </p>
+                    <div className="mt-4 flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={chromaQuery}
+                        onChange={(e) => setChromaQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') fetchChromaResults(chromaQuery); }}
+                        placeholder="Search vector database..."
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-100 outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        onClick={() => fetchChromaResults(chromaQuery)}
+                        disabled={chromaLoading}
+                        className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-4 py-2 rounded"
+                      >
+                        {chromaLoading ? 'Searching...' : 'Search'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="space-y-4">

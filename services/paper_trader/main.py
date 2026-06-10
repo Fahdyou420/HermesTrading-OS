@@ -252,7 +252,8 @@ async def manual_close_position(trade_id: str):
     # Gather ticks
     try:
         url = f"{MT5_BRIDGE_URL}/latest_bars?instrument={instrument}&tf=M15&n=1"
-        resp = requests.get(url, timeout=5)
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(None, lambda: requests.get(url, timeout=5))
         if resp.status_code == 200:
             bars = resp.json()
             if bars:
