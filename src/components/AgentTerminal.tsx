@@ -127,7 +127,7 @@ export default function AgentTerminal({ logs, onAddLog }: AgentTerminalProps) {
         case '/backtest':
           addLine('tool-call', 'Initiating backtest queue. Strategy validation will run in background thread.');
           try {
-            await fetch('/api/loops/backtest', { method: 'POST' });
+            await fetch('/api/loops/trigger/hypothesisRandD', { method: 'POST' });
             addLine('success', 'Backtest requested successfully. Monitor autonomous loops table for results.');
           } catch (e) {
             addLine('error', 'Dispatching backtest loop failed.');

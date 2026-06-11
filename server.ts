@@ -197,8 +197,8 @@ app.get("/api/status", async (req, res) => {
 
 app.get("/api/market", async (req, res) => {
   let price = currentPrice;
-  let high = 2329.80;
-  let low = 2301.20;
+  let high: number | null = null;
+  let low: number | null = null;
   let fvgList = fairValueGaps;
   let obList = orderBlocks;
   let liqList = liquidityPools;
@@ -248,12 +248,12 @@ app.get("/api/market", async (req, res) => {
 
   res.json({
     currentPrice: price,
-    dailyHigh: high,
-    dailyLow: low,
+    dailyHigh: high ?? 0,
+    dailyLow: low ?? 0,
     sessions: {
-      asian: { open: false, range: `${(low + 2).toFixed(2)} - ${(low + 12).toFixed(2)}` },
-      london: { open: true, range: `${(low + 5).toFixed(2)} - ${(high - 5).toFixed(2)}` },
-      newYork: { open: true, range: `${(low + 10).toFixed(2)} - ${high.toFixed(2)}` }
+      asian: { open: false, range: `${((low ?? 0) + 2).toFixed(2)} - ${((low ?? 0) + 12).toFixed(2)}` },
+      london: { open: true, range: `${((low ?? 0) + 5).toFixed(2)} - ${((high ?? 0) - 5).toFixed(2)}` },
+      newYork: { open: true, range: `${((low ?? 0) + 10).toFixed(2)} - ${(high ?? 0).toFixed(2)}` }
     },
     fairValueGaps: fvgList,
     orderBlocks: obList,
@@ -694,6 +694,61 @@ app.post("/api/loops/trigger/:loop", (req, res) => {
   } else {
     res.status(400).json({ error: "Unknown loop identifier" });
   }
+});
+
+app.get("/api/strategy/list", async (req, res) => {
+  try {
+    const response = await fetchWithTimeout("http://dashboard:8080/api/strategy/list", {}, 400);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+  } catch (e) {
+    try {
+      const response = await fetchWithTimeout("http://localhost:8080/api/strategy/list", {}, 400);
+      if (response.ok) {
+        const data = await response.json();
+        return res.json(data);
+      }
+    } catch (e2) {}
+  }
+  // Default fallback if dashboard is offline
+  res.json([
+    {
+      id: "strat_NY_divergence",
+      name: "NY Silver Divergence (Aggressive)",
+      status: "hypothesis",
+      instrument: "XAUUSD",
+      timeframe: "M1",
+      date_created: "2026-06-10",
+      rules: {
+        entry_rules: ["M1 displacement", "SSL sweep", "FVG reaction"],
+        metrics: { win_rate: 0.65, profit_factor: 1.8, total_trades: 12 }
+      }
+    }
+  ]);
+});
+
+app.get("/api/vault/search", async (req, res) => {
+  const query = req.query.q as string || "";
+  try {
+    const qString = encodeURIComponent(query);
+    const response = await fetchWithTimeout(`http://dashboard:8080/api/vault/search?q=${qString}`, {}, 400);
+    if (response.ok) {
+      const data = await response.json();
+      return res.json(data);
+    }
+  } catch (e) {
+    try {
+      const qString = encodeURIComponent(query);
+      const response = await fetchWithTimeout(`http://localhost:8080/api/vault/search?q=${qString}`, {}, 400);
+      if (response.ok) {
+        const data = await response.json();
+        return res.json(data);
+      }
+    } catch (e2) {}
+  }
+  res.json([]);
 });
 
 // Gemini Chat & Analysis Endpoint
